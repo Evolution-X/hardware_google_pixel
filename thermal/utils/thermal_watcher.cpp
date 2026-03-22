@@ -348,7 +348,7 @@ void ThermalWatcher::registerFilesToWatch(const std::set<std::string> &sensors_t
     LOG(INFO) << "Uevent register file to watch...";
     monitored_sensors_.insert(sensors_to_watch.begin(), sensors_to_watch.end());
 
-    uevent_fd_.reset((TEMP_FAILURE_RETRY(uevent_open_socket(64 * 1024, true))));
+    uevent_fd_.reset((TEMP_FAILURE_RETRY(uevent_open_socket(kUeventSocketRcvBufSize, true))));
     if (uevent_fd_.get() < 0) {
         LOG(ERROR) << "failed to open uevent socket";
         return;
@@ -417,12 +417,11 @@ bool ThermalWatcher::startWatchingDeviceFiles() {
 }
 void ThermalWatcher::parseUevent(std::unordered_map<std::string, float> *sensor_map) {
     bool thermal_event = false;
-    constexpr int kUeventMsgLen = 2048;
-    char msg[kUeventMsgLen + 2];
+    char *msg = uevent_msg_buf_.data();
     char *cp;
 
     while (true) {
-        int n = uevent_kernel_multicast_recv(uevent_fd_.get(), msg, kUeventMsgLen);
+        ssize_t n = uevent_kernel_multicast_recv(uevent_fd_.get(), msg, kUeventMsgLen);
         if (n <= 0) {
             if (errno != EAGAIN && errno != EWOULDBLOCK) {
                 LOG(ERROR) << "Error reading from Uevent Fd";
@@ -430,8 +429,9 @@ void ThermalWatcher::parseUevent(std::unordered_map<std::string, float> *sensor_
             break;
         }
 
-        if (n >= kUeventMsgLen) {
-            LOG(ERROR) << "Uevent overflowed buffer, discarding";
+        if (static_cast<size_t>(n) >= kUeventMsgLen) {
+            LOG(ERROR) << "Uevent overflowed buffer (" << n << " >= " << kUeventMsgLen
+                       << "), discarding";
             continue;
         }
 
