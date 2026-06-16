@@ -71,6 +71,9 @@ class ThermalWatcher : public ::android::Thread {
     void wake();
 
   private:
+    static constexpr size_t kUeventSocketRcvBufSize = 64 * 1024;
+    static constexpr size_t kUeventMsgLen = kUeventSocketRcvBufSize;
+
     // The work done by the watcher thread. This will use inotify to check for
     // modifications to the files to watch. If any modification is seen this
     // will callback the registered function with the new data read from the
@@ -96,6 +99,8 @@ class ThermalWatcher : public ::android::Thread {
 
     // For uevent socket registration.
     ::android::base::unique_fd uevent_fd_;
+    // Reuse a larger buffer so long thermal uevents are not truncated.
+    std::vector<char> uevent_msg_buf_ = std::vector<char>(kUeventMsgLen + 2);
     // For thermal genl socket registration.
     ::android::base::unique_fd thermal_genl_fd_;
     // Sensor list which monitor flag is enabled.
